@@ -10,6 +10,14 @@ The full CLIP setup is far outside the course constraints, so this project uses 
 uv run python -m miniclip_repro.run_all --config configs/flickr8k.yaml
 ```
 
+Recommended full experiment:
+
+```bash
+uv run python -m miniclip_repro.train --config configs/flickr8k_strong.yaml --output-dir outputs/flickr8k-strong-160-b128
+uv run python -m miniclip_repro.eval_retrieval --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_last.pt --output-dir outputs/flickr8k-strong-160-b128-last
+uv run python -m miniclip_repro.eval_zeroshot --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_best.pt --output-dir outputs/flickr8k-strong-160-b128
+```
+
 Quick smoke run:
 
 ```bash
@@ -17,6 +25,26 @@ uv run python -m miniclip_repro.run_all --config configs/flickr8k.yaml --fast-de
 ```
 
 The run writes checkpoints, metrics and tables under `outputs/<run_id>/`.
+
+## Current headline result
+
+The strongest laptop-scale configuration is `configs/flickr8k_strong.yaml`: 160 px images, batch size 128, light image augmentation, 50 epochs, warmup and cosine learning-rate decay. It trains from scratch, without ImageNet or CLIP-pretrained weights, and finished in 2142.9 seconds on Apple MPS.
+
+Flickr8k test retrieval with `checkpoint_last.pt`:
+
+| Split | Text R@1 | Text R@5 | Text R@10 | Image R@1 | Image R@5 | Image R@10 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Flickr8k test | 4.10 | 14.90 | 20.50 | 3.84 | 14.02 | 21.52 |
+
+CIFAR-10 prompt ablation with `checkpoint_best.pt`:
+
+| Prompt variant | Accuracy |
+| --- | ---: |
+| Class name only | 13.70 |
+| `a photo of a {label}` | 16.00 |
+| Prompt ensemble | 14.20 |
+
+The result is strongest as an image-text retrieval reproduction. Zero-shot transfer is above random chance but remains a limitation of training a small CLIP-like model from scratch on Flickr8k.
 
 ## Main artifacts
 
@@ -38,4 +66,3 @@ For local code smoke tests without downloading Flickr8k:
 ```bash
 uv run python -m miniclip_repro.run_all --config configs/flickr8k.yaml --fast-dev-run --synthetic-data --skip-zeroshot
 ```
-

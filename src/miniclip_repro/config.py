@@ -15,6 +15,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cache_dir": "data/hf_cache",
         "image_size": 128,
         "num_workers": 0,
+        "train_augmentation": "none",
     },
     "model": {
         "embed_dim": 256,
@@ -33,6 +34,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "lr": 3e-4,
         "weight_decay": 0.01,
         "grad_clip_norm": 1.0,
+        "warmup_steps": 0,
+        "monitor_metric": "mean_r@1",
+        "early_stopping_patience": 0,
+        "early_stopping_min_delta": 0.0,
         "log_interval": 20,
     },
     "eval": {
@@ -87,4 +92,3 @@ def apply_fast_dev_overrides(config: dict[str, Any]) -> dict[str, Any]:
     cfg["eval"]["batch_size"] = min(int(cfg["eval"]["batch_size"]), 32)
     cfg["eval"]["cifar10_limit"] = int(cfg["eval"]["fast_dev"]["cifar10_limit"])
     return cfg
-

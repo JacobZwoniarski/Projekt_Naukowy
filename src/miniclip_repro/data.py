@@ -26,11 +26,30 @@ def all_captions(rows: Sequence[dict[str, Any]]) -> list[str]:
     return captions
 
 
-def build_image_transform(image_size: int) -> transforms.Compose:
-    return transforms.Compose(
-        [
+def build_image_transform(image_size: int, training: bool = False, augmentation: str = "none") -> transforms.Compose:
+    if training and augmentation != "none":
+        if augmentation == "light":
+            image_steps: list[Any] = [
+                transforms.RandomResizedCrop(image_size, scale=(0.75, 1.0), ratio=(0.9, 1.1)),
+                transforms.RandomHorizontalFlip(p=0.5),
+            ]
+        elif augmentation == "clip":
+            image_steps = [
+                transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0), ratio=(0.75, 1.33)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.02),
+            ]
+        else:
+            raise ValueError(f"Unknown image augmentation profile: {augmentation}")
+    else:
+        image_steps = [
             transforms.Resize(image_size + 16),
             transforms.CenterCrop(image_size),
+        ]
+
+    return transforms.Compose(
+        [
+            *image_steps,
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711)),
         ]
@@ -111,10 +130,11 @@ class Flickr8kTrainingDataset(Dataset):
         vocab: CaptionVocabulary,
         image_size: int,
         max_length: int,
+        augmentation: str = "none",
     ):
         self.rows = rows
         self.vocab = vocab
-        self.transform = build_image_transform(image_size)
+        self.transform = build_image_transform(image_size, training=True, augmentation=augmentation)
         self.max_length = max_length
         self.epoch = 0
 
@@ -183,4 +203,3 @@ def collate_texts(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tenso
         "texts": torch.stack([item["texts"] for item in batch]),
         "image_indices": torch.stack([item["image_indices"] for item in batch]),
     }
-

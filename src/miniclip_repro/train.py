@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,7 @@ def build_train_loader(
         vocab=vocab,
         image_size=int(config["data"]["image_size"]),
         max_length=int(config["model"]["max_length"]),
+        augmentation=str(config["data"].get("train_augmentation", "none")),
     )
     generator = torch.Generator()
     generator.manual_seed(seed)
@@ -54,6 +56,25 @@ def build_train_loader(
         drop_last=True,
     )
     return dataset, loader
+
+
+def build_lr_scheduler(
+    optimizer: torch.optim.Optimizer,
+    total_steps: int,
+    warmup_steps: int,
+) -> torch.optim.lr_scheduler.LRScheduler:
+    if warmup_steps <= 0:
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+
+    warmup_steps = min(warmup_steps, max(total_steps - 1, 1))
+
+    def lr_lambda(step: int) -> float:
+        if step < warmup_steps:
+            return float(step + 1) / float(warmup_steps)
+        progress = float(step - warmup_steps) / float(max(total_steps - warmup_steps, 1))
+        return 0.5 * (1.0 + math.cos(math.pi * progress))
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 
 def train_model(
@@ -98,10 +119,18 @@ def train_model(
         weight_decay=float(config["training"]["weight_decay"]),
     )
     total_steps = max(1, int(config["training"]["epochs"]) * len(train_loader))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+    scheduler = build_lr_scheduler(
+        optimizer,
+        total_steps=total_steps,
+        warmup_steps=int(config["training"].get("warmup_steps", 0)),
+    )
 
     history: list[dict[str, Any]] = []
     best_score = float("-inf")
+    epochs_without_improvement = 0
+    monitor_metric = str(config["training"].get("monitor_metric", "mean_r@1"))
+    early_stopping_patience = int(config["training"].get("early_stopping_patience", 0))
+    early_stopping_min_delta = float(config["training"].get("early_stopping_min_delta", 0.0))
     best_checkpoint = run_dir / "checkpoint_best.pt"
     last_checkpoint = run_dir / "checkpoint_last.pt"
 
@@ -130,14 +159,30 @@ def train_model(
 
         avg_loss = running_loss / max(step_count, 1)
         val_metrics = evaluate_retrieval(model, splits["validation"], vocab, config, device)
-        epoch_metrics = {"epoch": epoch + 1, "train_loss": avg_loss, **val_metrics}
+        logit_scale = model.logit_scale.detach().exp().clamp(max=100.0).item()
+        epoch_metrics = {
+            "epoch": epoch + 1,
+            "train_loss": avg_loss,
+            "lr": optimizer.param_groups[0]["lr"],
+            "logit_scale": logit_scale,
+            "temperature": 1.0 / logit_scale,
+            **val_metrics,
+        }
         history.append(epoch_metrics)
         print(format_retrieval_markdown(val_metrics, title=f"Flickr8k validation epoch {epoch + 1}"))
 
         save_checkpoint(last_checkpoint, model, config, vocab, epoch + 1, epoch_metrics)
-        if val_metrics["mean_r@1"] > best_score:
-            best_score = val_metrics["mean_r@1"]
+        score = float(epoch_metrics[monitor_metric])
+        if score > best_score + early_stopping_min_delta:
+            best_score = score
+            epochs_without_improvement = 0
             save_checkpoint(best_checkpoint, model, config, vocab, epoch + 1, epoch_metrics)
+        else:
+            epochs_without_improvement += 1
+
+        if early_stopping_patience > 0 and epochs_without_improvement >= early_stopping_patience:
+            print(f"Early stopping after {epoch + 1} epochs without improvement in {monitor_metric}.")
+            break
 
     elapsed = time.time() - start_time
     summary = {
@@ -180,4 +225,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

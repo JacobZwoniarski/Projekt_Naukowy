@@ -6,18 +6,20 @@ The full CLIP setup is far outside the course constraints, so this project uses 
 
 Polish report notes for the documentation and methodology section are available in [`docs/methodology.md`](docs/methodology.md).
 
-## One-command run
+## One-command reproduction
 
 ```bash
-uv run python -m miniclip_repro.run_all --config configs/flickr8k.yaml
+uv run python -m miniclip_repro.reproduce --config configs/flickr8k_strong.yaml --output-dir outputs/flickr8k-strong-160-b128
 ```
 
-Recommended full experiment:
+This is the report reproduction command. It trains the strongest Mini-CLIP configuration, evaluates Flickr8k retrieval from `checkpoint_last.pt`, evaluates CIFAR-10 zero-shot prompt ablations from `checkpoint_best.pt`, and writes all artifacts under `outputs/flickr8k-strong-160-b128/`.
+
+Equivalent expanded commands:
 
 ```bash
 uv run python -m miniclip_repro.train --config configs/flickr8k_strong.yaml --output-dir outputs/flickr8k-strong-160-b128
-uv run python -m miniclip_repro.eval_retrieval --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_last.pt --output-dir outputs/flickr8k-strong-160-b128-last
-uv run python -m miniclip_repro.eval_zeroshot --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_best.pt --output-dir outputs/flickr8k-strong-160-b128
+uv run python -m miniclip_repro.eval_retrieval --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_last.pt --output-dir outputs/flickr8k-strong-160-b128/retrieval_last
+uv run python -m miniclip_repro.eval_zeroshot --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_best.pt --output-dir outputs/flickr8k-strong-160-b128/zeroshot_best
 ```
 
 Quick smoke run:
@@ -50,9 +52,11 @@ The result is strongest as an image-text retrieval reproduction. Zero-shot trans
 
 ## Main artifacts
 
-- `retrieval_table.csv` and `retrieval_table.md`: Flickr8k image-text retrieval, adapting CLIP Table 13 style to this smaller dataset.
-- `prompt_ablation.csv` and `prompt_ablation.png`: CIFAR-10 zero-shot prompt ablation, adapting the prompt-engineering comparison from CLIP Figure 4.
+- `retrieval_last/retrieval_table.csv` and `retrieval_last/retrieval_table.md`: Flickr8k image-text retrieval. Caption for the report: "Reproduction-style adaptation of Table 13 in Radford et al. (2021), evaluated on Flickr8k instead of Flickr30k/MSCOCO."
+- `zeroshot_best/prompt_ablation.csv` and `zeroshot_best/prompt_ablation.png`: CIFAR-10 zero-shot prompt ablation. Caption for the report: "Prompt ablation inspired by the prompt-engineering discussion in Radford et al. (2021), adapted to a Mini-CLIP model trained on Flickr8k."
 - `metrics.json`: training loss, validation retrieval and final artifact locations.
+- `docs/report.md`: scientific report draft covering paper summary, method, setup, results, ablation, limitations and reproducibility notes.
+- `slides/slides.md`: 14-slide presentation outline for a 10-minute talk plus Q&A.
 
 ## Useful commands
 

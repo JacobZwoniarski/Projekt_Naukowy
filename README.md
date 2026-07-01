@@ -4,6 +4,8 @@ Laptop-scale reproduction of the main idea from Radford et al. 2021, *Learning T
 
 The full CLIP setup is far outside the course constraints, so this project uses Flickr8k and a small model trained from scratch.
 
+Polish report notes for the documentation and methodology section are available in [`docs/methodology.md`](docs/methodology.md).
+
 ## One-command run
 
 ```bash

@@ -1,183 +1,199 @@
-# Dokumentacja i część metodyczna raportu
+# Documentation and Methodology Notes
 
-## 1. Cel projektu
+## 1. Project Goal
 
-Projekt jest laptopową reprodukcją głównej idei pracy Radford et al. (2021), czyli uczenia wspólnej przestrzeni reprezentacji obrazów i tekstów metodą kontrastową. Zamiast pełnoskalowego CLIP-a trenowanego na bardzo dużym zbiorze par obraz-tekst, implementacja używa mniejszego modelu Mini-CLIP oraz zbioru Flickr8k. Celem nie jest osiągnięcie wyników oryginalnego CLIP-a, tylko sprawdzenie, czy ta sama procedura uczenia pozwala uzyskać mierzalne dopasowanie obrazów i podpisów w ograniczonych warunkach obliczeniowych.
+This project is a laptop-scale reproduction of the main idea from Radford et al. (2021), *Learning Transferable Visual Models From Natural Language Supervision*. The original CLIP system trains image and text encoders with a contrastive objective on a very large collection of image-text pairs. This implementation uses a smaller Mini-CLIP model trained from scratch on Flickr8k.
 
-Projekt obejmuje trzy główne elementy:
+The goal is not to match the full CLIP results. The goal is to verify whether the same learning procedure can produce measurable image-text alignment under course-scale compute constraints.
 
-- przygotowanie danych obraz-tekst,
-- trening dwuwieżowego modelu obrazowego i tekstowego,
-- ewaluację przez wyszukiwanie obraz-tekst oraz prosty transfer zero-shot.
+The project contains three main parts:
 
-## 2. Dane
+- image-text data preparation,
+- training a dual image/text encoder,
+- evaluating image-text retrieval and simple zero-shot transfer.
 
-Podstawowym zbiorem danych jest `jxie/flickr8k` ładowany przez bibliotekę Hugging Face `datasets`. Każdy przykład zawiera obraz oraz do pięciu podpisów tekstowych (`caption_0` ... `caption_4`). Implementacja dzieli dane na zbiory `train`, `validation` i `test`; jeżeli zbiór nie ma klucza `validation`, używany jest klucz `dev`.
+## 2. Data
 
-W treningu każdy obraz jest łączony z jednym podpisem. Podpis jest wybierany deterministycznie zależnie od epoki i indeksu przykładu, dzięki czemu kolejne epoki wykorzystują różne podpisy tego samego obrazu bez losowego przetasowywania na poziomie pojedynczego przykładu.
+The main dataset is `jxie/flickr8k`, loaded through Hugging Face `datasets`. Each example contains one image and up to five captions (`caption_0` ... `caption_4`). The implementation uses `train`, `validation`, and `test` splits. If the dataset exposes `dev` instead of `validation`, the code maps `dev` to validation.
 
-Przetwarzanie obrazów:
+During training, each image is paired with one caption. The caption is selected deterministically from the available captions based on the epoch and example index. This lets the model see different captions for the same image across epochs without adding extra random sampling logic.
 
-- obrazy są konwertowane do RGB,
-- w konfiguracji bazowej używany jest `Resize(image_size + 16)` i `CenterCrop(image_size)`,
-- w konfiguracji `configs/flickr8k_strong.yaml` podczas treningu używana jest lekka augmentacja: `RandomResizedCrop` oraz `RandomHorizontalFlip`,
-- normalizacja używa średnich i odchyleń standardowych stosowanych w CLIP.
+Image preprocessing:
 
-Przetwarzanie tekstu:
+- images are converted to RGB,
+- the base evaluation transform uses `Resize(image_size + 16)` followed by `CenterCrop(image_size)`,
+- `configs/flickr8k_strong.yaml` uses light training augmentation with `RandomResizedCrop` and `RandomHorizontalFlip`,
+- normalization uses the image mean and standard deviation commonly used by CLIP.
 
-- tokenizer jest prosty i oparty na wyrażeniu regularnym `[a-z0-9]+`,
-- tekst jest sprowadzany do małych liter,
-- słownik budowany jest wyłącznie na podpisach treningowych,
-- sekwencja zawiera tokeny specjalne `<bos>`, `<eos>`, `<pad>` i `<unk>`,
-- maksymalna długość sekwencji w aktualnych konfiguracjach wynosi 32 tokeny.
+Text preprocessing:
 
-Dla testów technicznych bez pobierania Flickr8k dostępny jest także tryb syntetyczny, który generuje proste obrazy kolorowych kwadratów i odpowiadające im podpisy.
+- tokenization uses a simple regular expression, `[a-z0-9]+`,
+- captions are lowercased,
+- the vocabulary is built only from training captions,
+- sequences contain `<bos>`, `<eos>`, `<pad>`, and `<unk>` special tokens,
+- the configured maximum sequence length is 32 tokens.
+
+For technical smoke tests without downloading Flickr8k, the code also supports synthetic data: simple colored-square images with matching captions.
 
 ## 3. Model
 
-Model ma architekturę dwuwieżową, analogiczną do CLIP:
+The model uses a dual-encoder architecture similar to CLIP:
 
-- enkoder obrazu przekształca obraz w wektor cech,
-- enkoder tekstu przekształca podpis w wektor cech,
-- oba wektory są rzutowane do wspólnej przestrzeni o wymiarze `embed_dim`,
-- reprezentacje są normalizowane do długości 1,
-- podobieństwo obrazu i tekstu jest iloczynem skalarnym z uczoną skalą logitów.
+- an image encoder maps images to feature vectors,
+- a text encoder maps captions to feature vectors,
+- both vectors are projected into a shared embedding space,
+- both representations are L2-normalized,
+- image-text similarity is computed by scaled dot product.
 
-Enkoder obrazu bazuje na `ResNet-18` z `torchvision`, trenowanym od zera (`weights=None`). Ostatnia warstwa klasyfikacyjna ResNeta jest usuwana, a jej miejsce zajmuje liniowa projekcja do przestrzeni wspólnej.
+The image encoder is a `torchvision` ResNet-18 trained from scratch (`weights=None`). Its classification layer is removed and replaced with a linear projection into the shared embedding space.
 
-Enkoder tekstu składa się z:
+The text encoder contains:
 
-- embeddingów tokenów,
-- uczonych embeddingów pozycyjnych,
-- małego `TransformerEncoder`,
-- normalizacji warstwowej,
-- liniowej projekcji do przestrzeni wspólnej.
+- token embeddings,
+- learned positional embeddings,
+- a small `TransformerEncoder`,
+- final layer normalization,
+- a linear projection into the shared embedding space.
 
-Reprezentacją całego tekstu jest stan ukryty w pozycji tokenu `<eos>`. W konfiguracjach projektu tekstowy Transformer ma 2 warstwy, szerokość 256, 4 głowy uwagi i wymiar warstwy feed-forward 512.
+The text representation is taken from the hidden state at the `<eos>` token. In the current configurations, the text Transformer has 2 layers, width 256, 4 attention heads, and feed-forward dimension 512.
 
-## 4. Funkcja celu
+## 4. Objective Function
 
-Trening używa symetrycznej straty kontrastowej CLIP. Dla batcha złożonego z `N` dopasowanych par obraz-podpis model wyznacza macierz podobieństw `N x N`. Element na przekątnej odpowiada poprawnej parze, a pozostałe elementy są negatywnymi przykładami wewnątrz batcha.
+Training uses the symmetric CLIP contrastive loss. For a batch of `N` matched image-caption pairs, the model computes an `N x N` similarity matrix. Diagonal entries are positive pairs; off-diagonal entries are in-batch negatives.
 
-Strata jest średnią z dwóch kierunków:
+The loss averages two classification directions:
 
-- klasyfikacji poprawnego tekstu dla obrazu,
-- klasyfikacji poprawnego obrazu dla tekstu.
+- image-to-text: predict the matching text for each image,
+- text-to-image: predict the matching image for each text.
 
-Formalnie implementacja liczy `cross_entropy(logits_per_image, targets)` i `cross_entropy(logits_per_text, targets)`, gdzie `targets = [0, 1, ..., N-1]`, a końcowa strata to średnia obu wartości.
+In code, this is:
 
-## 5. Procedura treningu
+```text
+targets = [0, 1, ..., N-1]
+loss = 0.5 * (
+    cross_entropy(logits_per_image, targets)
+    + cross_entropy(logits_per_text, targets)
+)
+```
 
-Trening jest konfigurowany plikami YAML w katalogu `configs/`. Konfiguracja bazowa `configs/flickr8k.yaml` jest szybkim wariantem startowym, a `configs/flickr8k_strong.yaml` jest wariantem rekomendowanym do pełniejszego eksperymentu.
+## 5. Training Procedure
 
-Najważniejsze parametry konfiguracji `flickr8k_strong`:
+Training is configured through YAML files in `configs/`. The base config `configs/flickr8k.yaml` is a quick starting point. The recommended full experiment is `configs/flickr8k_strong.yaml`.
 
-- rozmiar obrazu: 160,
+Important `flickr8k_strong` settings:
+
+- image size: 160,
 - batch size: 128,
-- liczba epok: 50,
+- epochs: 50,
 - optimizer: `AdamW`,
 - learning rate: `0.0004`,
 - weight decay: `0.01`,
 - gradient clipping: `1.0`,
-- warmup: 250 kroków,
-- scheduler: warmup + cosine decay,
-- monitorowana metryka walidacyjna: `mean_r@1`.
+- warmup: 250 steps,
+- scheduler: warmup plus cosine decay,
+- validation monitor: `mean_r@1`.
 
-Podczas treningu zapisywane są:
+During training, the run directory stores:
 
-- `config.yaml` z konfiguracją konkretnego uruchomienia,
-- `vocab.json` ze słownikiem,
-- `checkpoint_last.pt` z ostatnią epoką,
-- `checkpoint_best.pt` z najlepszym wynikiem walidacyjnym,
-- `metrics.json` z historią treningu, czasem działania, urządzeniem i wersjami pakietów.
+- `config.yaml` with the resolved run configuration,
+- `vocab.json` with the caption vocabulary,
+- `checkpoint_last.pt`,
+- `checkpoint_best.pt`,
+- `metrics.json` with training history, elapsed time, device, and package versions.
 
-Losowość jest kontrolowana przez `seed = 42`. Kod ustawia ziarna dla `random`, `numpy`, `torch` oraz, jeśli jest dostępne, dla CUDA. Dodatkowo wyłącza niedeterministyczny dobór algorytmów cuDNN przez `torch.backends.cudnn.benchmark = False` i `torch.backends.cudnn.deterministic = True`.
+Randomness is controlled by `seed = 42`. The code sets seeds for `random`, `numpy`, and `torch`, and also sets CUDA seeds when CUDA is available. It disables cuDNN benchmarking and requests deterministic cuDNN behavior where applicable.
 
-## 6. Ewaluacja
+## 6. Evaluation
 
-### 6.1 Retrieval obraz-tekst
+### 6.1 Image-Text Retrieval
 
-Główna ewaluacja sprawdza, czy model potrafi odzyskać właściwy tekst dla obrazu oraz właściwy obraz dla tekstu. Dla zbioru walidacyjnego lub testowego kod osobno koduje wszystkie obrazy i wszystkie podpisy, a następnie wyznacza macierz podobieństw.
+The main evaluation checks whether the model retrieves the correct text for an image and the correct image for a text. For the validation or test split, the code encodes all images and all captions, then computes the full similarity matrix.
 
-Raportowane są metryki:
+Reported metrics:
 
-- `Text R@1`, `Text R@5`, `Text R@10` - odsetek obrazów, dla których co najmniej jeden poprawny podpis znalazł się w top-k,
-- `Image R@1`, `Image R@5`, `Image R@10` - odsetek podpisów, dla których poprawny obraz znalazł się w top-k,
-- `mean_r@1` - średnia z `Text R@1` i `Image R@1`.
+- `Text R@1`, `Text R@5`, `Text R@10`: percentage of images for which at least one correct caption appears in the top-k retrieved captions,
+- `Image R@1`, `Image R@5`, `Image R@10`: percentage of captions for which the correct image appears in the top-k retrieved images,
+- `mean_r@1`: average of `Text R@1` and `Image R@1`.
 
-Artefakty ewaluacji retrieval są zapisywane jako:
+Retrieval artifacts:
 
 - `retrieval_table.csv`,
 - `retrieval_table.md`,
 - `retrieval_metrics.json`.
 
-### 6.2 Transfer zero-shot na CIFAR-10
+### 6.2 CIFAR-10 Zero-Shot Prompt Ablation
 
-Druga ewaluacja jest uproszczonym testem transferu zero-shot. Model nie jest dotrenowywany na CIFAR-10. Zamiast tego nazwy klas są zamieniane na prompty tekstowe, kodowane przez enkoder tekstu i porównywane z embeddingami obrazów CIFAR-10.
+The second evaluation is a simplified zero-shot transfer test. The model is not fine-tuned on CIFAR-10. Instead, CIFAR-10 class names are converted into text prompts, encoded by the text tower, and compared with image embeddings.
 
-Porównywane są trzy warianty promptów:
+The code compares three prompt variants:
 
-- sama nazwa klasy,
-- pojedynczy prompt `a photo of a/an {label}`,
-- średnia z kilku promptów zdefiniowanych w konfiguracji.
+- class name only,
+- a single `a photo of a/an {label}` prompt,
+- an average over multiple prompt templates from the config.
 
-Wyniki są zapisywane jako:
+Prompt-ablation artifacts:
 
 - `prompt_ablation.csv`,
 - `prompt_ablation.json`,
 - `prompt_ablation.png`.
 
-Ten eksperyment należy traktować jako dodatkowy test generalizacji. Model jest trenowany od zera na małym zbiorze Flickr8k, więc wynik zero-shot na CIFAR-10 ma ograniczoną wartość porównawczą względem pełnego CLIP-a.
+This should be interpreted as an additional generalization check, not as a direct comparison with full CLIP. The model is trained from scratch on a small image-caption dataset, so zero-shot transfer is expected to be weak.
 
-## 7. Wyniki referencyjne
+## 7. Reference Results
 
-Według aktualnego README najlepsza konfiguracja projektu to `configs/flickr8k_strong.yaml`. Dla testu Flickr8k z `checkpoint_last.pt` uzyskano:
+According to the current README, the strongest configuration is `configs/flickr8k_strong.yaml`. On Flickr8k test with `checkpoint_last.pt`, the recorded result is:
 
 | Split | Text R@1 | Text R@5 | Text R@10 | Image R@1 | Image R@5 | Image R@10 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Flickr8k test | 4.10 | 14.90 | 20.50 | 3.84 | 14.02 | 21.52 |
 
-Dla prompt ablation na CIFAR-10 z `checkpoint_best.pt` uzyskano:
+For CIFAR-10 prompt ablation with `checkpoint_best.pt`, the recorded result is:
 
-| Wariant promptu | Accuracy |
+| Prompt variant | Accuracy |
 | --- | ---: |
-| Sama nazwa klasy | 13.70 |
+| Class name only | 13.70 |
 | `a photo of a {label}` | 16.00 |
-| Ensemble promptów | 14.20 |
+| Prompt ensemble | 14.20 |
 
-Interpretacja: model uczy się użytecznego dopasowania obraz-podpis, ale transfer zero-shot pozostaje słaby. Jest to zgodne z ograniczeniami skali danych, rozmiaru modelu i treningu od zera.
+Interpretation: the model learns useful image-caption alignment, but zero-shot transfer remains limited. This matches the expected limitations of training a small CLIP-like model from scratch on Flickr8k.
 
-## 8. Powtarzalność eksperymentu
+## 8. Reproducibility
 
-Pełny rekomendowany przebieg:
+Recommended one-command reproduction:
+
+```bash
+uv run python -m miniclip_repro.reproduce --config configs/flickr8k_strong.yaml --output-dir outputs/flickr8k-strong-160-b128
+```
+
+Equivalent expanded commands:
 
 ```bash
 uv run python -m miniclip_repro.train --config configs/flickr8k_strong.yaml --output-dir outputs/flickr8k-strong-160-b128
-uv run python -m miniclip_repro.eval_retrieval --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_last.pt --output-dir outputs/flickr8k-strong-160-b128-last
-uv run python -m miniclip_repro.eval_zeroshot --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_best.pt --output-dir outputs/flickr8k-strong-160-b128
+uv run python -m miniclip_repro.eval_retrieval --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_last.pt --output-dir outputs/flickr8k-strong-160-b128/retrieval_last
+uv run python -m miniclip_repro.eval_zeroshot --config configs/flickr8k_strong.yaml --checkpoint outputs/flickr8k-strong-160-b128/checkpoint_best.pt --output-dir outputs/flickr8k-strong-160-b128/zeroshot_best
 ```
 
-Szybki test bez pełnych danych:
+Quick smoke test without full data:
 
 ```bash
 uv run python -m miniclip_repro.run_all --config configs/flickr8k.yaml --fast-dev-run --synthetic-data --skip-zeroshot
 ```
 
-Testy jednostkowe:
+Unit tests:
 
 ```bash
 uv run pytest
 ```
 
-## 9. Ograniczenia
+## 9. Limitations
 
-Najważniejsze ograniczenia metodyczne:
+Main methodological limitations:
 
-- Flickr8k jest niewielki w porównaniu ze skalą danych użytych w oryginalnym CLIP-ie,
-- model jest trenowany od zera, bez wag ImageNet ani wag CLIP,
-- tokenizer jest prosty i nie używa segmentacji BPE ani gotowego tokenizera CLIP,
-- ResNet-18 i mały Transformer tekstowy mają dużo mniejszą pojemność niż modele z pracy źródłowej,
-- ewaluacja zero-shot na CIFAR-10 używa ograniczonej liczby przykładów określonej w konfiguracji,
-- wyniki mogą zależeć od urządzenia, wersji bibliotek i dostępnej precyzji obliczeń.
+- Flickr8k is very small compared with the data scale used by original CLIP,
+- the model is trained from scratch, without ImageNet or CLIP-pretrained weights,
+- the tokenizer is simple and does not use BPE or the original CLIP tokenizer,
+- ResNet-18 and the small text Transformer have much lower capacity than CLIP models,
+- the CIFAR-10 zero-shot evaluation uses the configured subset size,
+- results may vary with hardware backend, package versions, and numeric precision.
 
-W raporcie końcowym wyniki należy więc interpretować jako reprodukcję mechanizmu i procedury eksperymentalnej, a nie jako bezpośrednie porównanie jakości z oryginalnym CLIP-em.
+The results should therefore be interpreted as a reproduction of CLIP's mechanism and experimental procedure, not as a direct quality comparison with the original CLIP model.

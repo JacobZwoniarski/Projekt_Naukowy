@@ -181,15 +181,3 @@ Najważniejsze ograniczenia metodyczne:
 - wyniki mogą zależeć od urządzenia, wersji bibliotek i dostępnej precyzji obliczeń.
 
 W raporcie końcowym wyniki należy więc interpretować jako reprodukcję mechanizmu i procedury eksperymentalnej, a nie jako bezpośrednie porównanie jakości z oryginalnym CLIP-em.
-
-## 10. Proponowany podział opisu w raporcie
-
-Do raportu końcowego można przenieść tę część w następującej strukturze:
-
-- Wstęp i cel: krótko wyjaśnić CLIP oraz ograniczenie do skali laptopowej.
-- Dane: opisać Flickr8k, podpisy, preprocessing i augmentacje.
-- Metoda: opisać dwuwieżowy model, normalizację embeddingów i stratę kontrastową.
-- Eksperyment: podać konfigurację `flickr8k_strong`, optimizer, scheduler i artefakty.
-- Ewaluacja: wyjaśnić retrieval recall@k i prompt ablation.
-- Wyniki: wkleić tabele z README oraz omówić ograniczenia.
-- Wnioski: podkreślić, że reprodukcja działa lepiej dla retrieval niż dla zero-shot transferu.

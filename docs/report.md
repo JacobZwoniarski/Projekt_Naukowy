@@ -106,16 +106,16 @@ The final model differs from the original CLIP in several ways:
 
 ### 3.4 Course-book connections
 
-The implementation uses standard building blocks normally introduced across the neural-networks course material:
+The implementation uses building blocks introduced in the course book *Classical Foundations of Artificial Neural Networks*:
 
-- vector representations and dot-product similarity,
-- cross-entropy classification loss,
-- stochastic gradient descent variants and AdamW,
-- convolutional image encoders,
-- attention and Transformer encoders,
-- regularization through weight decay, dropout and data augmentation.
+- Chapters 21-25 introduce convolutional neural networks, which are the basis for the ResNet-18 image encoder.
+- Chapter 26 introduces cross-entropy and maximum-likelihood training, which are used inside the symmetric CLIP loss.
+- Chapter 27 introduces modern optimization methods, including the Adam family; the implementation uses AdamW with weight decay.
+- Chapter 30 covers PyTorch data loaders, training loops and evaluation, matching the structure of `train.py`, `eval_retrieval.py` and `eval_zeroshot.py`.
+- Chapters 37-40 introduce attention, self-attention and Transformers, which are the basis for the text encoder.
+- Chapter 42 introduces tokenizers, which connects directly to the simplified caption vocabulary used here.
 
-The final PDF should replace this bullet list with exact chapter numbers from the course book once the book title/edition is known.
+The project also uses vector representations, dot-product similarity and normalized embeddings throughout the retrieval pipeline. Those ideas connect the earlier linear-model material to modern contrastive representation learning.
 
 ## 4. Experimental setup
 
@@ -167,16 +167,16 @@ The headline run uses `configs/flickr8k_strong.yaml`.
 
 ### 4.4 Training budget and hardware
 
-The README result was produced on Apple MPS in 2142.9 seconds. A cluster replication should record:
+The README result was produced on Apple MPS in 2142.9 seconds. The cluster replication committed in `results/replication-cluster-001/` records:
 
-- GPU model,
-- CPU allocation,
-- memory allocation,
-- wall time,
-- CUDA/PyTorch versions,
-- final `metrics.json`.
+- device: CPU,
+- wall time: 2983.96 seconds,
+- Python: 3.13.9,
+- PyTorch: 2.12.1+cu130,
+- torchvision: 0.27.1+cu130,
+- datasets: 5.0.0.
 
-The code writes package versions into `metrics.json`, which should be included in the final artifact archive.
+The code writes package versions into `metrics.json`, which is included in the committed results folder.
 
 ### 4.5 What was copied and what changed
 
@@ -205,17 +205,20 @@ The main result is image-text retrieval on Flickr8k.
 
 | Model | Eval split | Text R@1 | Text R@5 | Text R@10 | Image R@1 | Image R@5 | Image R@10 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Mini-CLIP strong | Flickr8k test | 4.10 | 14.90 | 20.50 | 3.84 | 14.02 | 21.52 |
+| Mini-CLIP strong, original README run | Flickr8k test | 4.10 | 14.90 | 20.50 | 3.84 | 14.02 | 21.52 |
+| Mini-CLIP strong, cluster replication | Flickr8k test | 4.10 | 13.00 | 20.10 | 4.00 | 13.70 | 21.64 |
 
 The result is low compared with CLIP, but it is above a random retrieval baseline and shows that the model has learned a measurable shared embedding. The stronger interpretation is qualitative rather than competitive: the CLIP loss and dual-encoder training loop work even at small scale, but scale is essential for the high zero-shot performance reported by Radford et al.
+
+The cluster replication is very close to the original README run. Text R@1 is identical, image R@1 is slightly higher, and the largest retrieval difference is Text R@5, which drops by 1.90 percentage points. This supports the claim that the retrieval result is reproducible within the expected noise of a small contrastive setup.
 
 ### 5.2 Side-by-side with paper
 
 | Experiment | Paper result | Our result | Interpretation |
 | --- | ---: | ---: | --- |
-| Flickr-style text retrieval R@1 | 88.0 on Flickr30k | 4.10 on Flickr8k | Same retrieval format, not same training scale or eval dataset |
-| Flickr-style image retrieval R@1 | 68.7 on Flickr30k | 3.84 on Flickr8k | Large gap caused by data/model/compute scale |
-| Prompted zero-shot classification | Broad zero-shot transfer across many datasets | 16.00% on CIFAR-10 subset | Above random chance, but weak transfer |
+| Flickr-style text retrieval R@1 | 88.0 on Flickr30k | 4.10 on Flickr8k; 4.10 replicated | Same retrieval format, not same training scale or eval dataset |
+| Flickr-style image retrieval R@1 | 68.7 on Flickr30k | 3.84 on Flickr8k; 4.00 replicated | Large gap caused by data/model/compute scale |
+| Prompted zero-shot classification | Broad zero-shot transfer across many datasets | 16.00% on CIFAR-10 subset; 14.00% replicated | Above random chance, but weak transfer |
 
 The paper comparison should not be read as a failed attempt to match CLIP. It is evidence for the scaling argument: the same objective is easy to implement and does learn alignment, but the transfer behavior of CLIP depends heavily on massive and diverse pre-training.
 
@@ -233,7 +236,17 @@ Caption for the ablation figure/table:
 | `a photo of a {label}` | 16.00 |
 | Prompt ensemble | 14.20 |
 
-The best prompt in this run is the simple photo prompt. The ensemble does not improve the result, unlike what is often expected for larger CLIP models. This is a useful negative result: prompt ensembling only helps if the text encoder has learned robust enough semantics for the additional templates to average meaningful class representations.
+Cluster replication:
+
+| Prompt variant | Accuracy |
+| --- | ---: |
+| Class name only | 11.40 |
+| `a photo of a {label}` | 14.00 |
+| Prompt ensemble | 12.70 |
+
+The best prompt in both runs is the simple photo prompt. The ensemble does not improve the result, unlike what is often expected for larger CLIP models. This is a useful negative result: prompt ensembling only helps if the text encoder has learned robust enough semantics for the additional templates to average meaningful class representations.
+
+The replication is consistently lower by 1.5-2.3 percentage points, but the ordering of prompt variants is unchanged. This strengthens the ablation conclusion: prompt wording matters, but the small Flickr8k-trained text encoder does not benefit from prompt ensembling.
 
 ## 7. Limitations and reproducibility notes
 
@@ -262,8 +275,11 @@ Sensitivity concerns:
 - prompt ablation is sensitive to the tokenizer and training captions,
 - small-data training can vary across seeds,
 - retrieval R@1 is noisy when the dataset and model are small.
+- hardware and backend differences matter: the original README result used Apple MPS, while the cluster replication records CPU execution with PyTorch 2.12.1+cu130.
 
 The code fixes the default seed at 42 and writes run metadata, configuration, vocabulary, checkpoints, metrics and generated tables. For a final submission, the exact cluster run directory should be archived or included in the repository release.
+
+The committed cluster replication also provides a small "wow effect" result: retrieval is stable across environments, while zero-shot prompt accuracy drops more noticeably. That contrast suggests the retrieval benchmark is more robust for this small model than the downstream zero-shot transfer test.
 
 ## 8. Reproduction command
 
@@ -292,3 +308,37 @@ Expected artifacts:
 ## 9. Conclusion
 
 This project reproduces CLIP's core learning mechanism under course-scale constraints. The model learns an aligned embedding space that supports image-text retrieval, and the prompt ablation shows limited but measurable zero-shot behavior. The large gap to the original paper is itself the main scientific lesson: CLIP's method is simple, but its strongest claims emerge from scale, data diversity, and careful evaluation design.
+
+## Appendix A. Replication delta summary
+
+The cluster replication gives an additional check beyond a single successful run. The table below compares the original README result with the committed cluster result and reports the absolute difference in percentage points.
+
+| Retrieval metric | Original README | Cluster replication | Delta |
+| --- | ---: | ---: | ---: |
+| Text R@1 | 4.10 | 4.10 | 0.00 |
+| Text R@5 | 14.90 | 13.00 | -1.90 |
+| Text R@10 | 20.50 | 20.10 | -0.40 |
+| Image R@1 | 3.84 | 4.00 | +0.16 |
+| Image R@5 | 14.02 | 13.70 | -0.32 |
+| Image R@10 | 21.52 | 21.64 | +0.12 |
+
+| Prompt metric | Original README | Cluster replication | Delta |
+| --- | ---: | ---: | ---: |
+| Class name only | 13.70 | 11.40 | -2.30 |
+| `a photo of a {label}` | 16.00 | 14.00 | -2.00 |
+| Prompt ensemble | 14.20 | 12.70 | -1.50 |
+
+The retrieval deltas are small and mixed in sign, which supports the reproducibility of the retrieval result. The prompt-ablation deltas are consistently negative, but the ranking of prompt variants is unchanged. This distinction is useful scientifically: the embedding alignment measured by retrieval appears more stable than the downstream prompt-based zero-shot transfer test.
+
+## Appendix B. Submission checklist
+
+The repository now contains the following submission artifacts:
+
+- `README.md` describes the paper, target result and one-command reproduction.
+- `src/miniclip_repro/` contains modular training and evaluation code.
+- `configs/flickr8k_strong.yaml` fixes the main hyperparameters and seed.
+- `docs/report.md` and `docs/report.pdf` contain the scientific report.
+- `slides/slides.md` and `slides/miniclip_reproduction.pptx` contain the presentation.
+- `results/replication-cluster-001/` contains lightweight cluster replication artifacts.
+
+The main remaining manual step before presenting is to rehearse the 10-minute talk and decide which result table to show live. The recommended live demo is not to retrain the model, but to show the one-command reproduction entry point and the committed result artifacts, because the full training run takes close to an hour on the recorded CPU setup.

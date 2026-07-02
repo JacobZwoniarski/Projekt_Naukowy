@@ -55,8 +55,8 @@ The result is strongest as an image-text retrieval reproduction. Zero-shot trans
 - `retrieval_last/retrieval_table.csv` and `retrieval_last/retrieval_table.md`: Flickr8k image-text retrieval. Caption for the report: "Reproduction-style adaptation of Table 13 in Radford et al. (2021), evaluated on Flickr8k instead of Flickr30k/MSCOCO."
 - `zeroshot_best/prompt_ablation.csv` and `zeroshot_best/prompt_ablation.png`: CIFAR-10 zero-shot prompt ablation. Caption for the report: "Prompt ablation inspired by the prompt-engineering discussion in Radford et al. (2021), adapted to a Mini-CLIP model trained on Flickr8k."
 - `metrics.json`: training loss, validation retrieval and final artifact locations.
-- `docs/report.md`: scientific report draft covering paper summary, method, setup, results, ablation, limitations and reproducibility notes.
-- `slides/slides.md`: 14-slide presentation outline for a 10-minute talk plus Q&A.
+- `docs/report.md` and `docs/report.pdf`: scientific report covering paper summary, method, setup, results, ablation, limitations and reproducibility notes.
+- `slides/slides.md` and `slides/miniclip_reproduction.pptx`: 15-slide presentation for a 10-minute talk plus Q&A.
 
 ## Useful commands
 

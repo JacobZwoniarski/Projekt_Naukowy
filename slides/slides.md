@@ -82,6 +82,7 @@ Caption: Reproduction-style adaptation of Table 13 in Radford et al. (2021), eva
 | --- | --- | ---: | ---: |
 | CLIP Table 13, Flickr30k | Web-scale WIT | 88.0 | 68.7 |
 | Mini-CLIP, Flickr8k | Flickr8k only | 4.10 | 3.84 |
+| Cluster replication | Flickr8k only | 4.10 | 4.00 |
 
 The same objective works, but scale changes the outcome.
 
@@ -95,15 +96,27 @@ Caption: Prompt ablation inspired by the prompt-engineering discussion in Radfor
 | `a photo of a {label}` | 16.00 |
 | Prompt ensemble | 14.20 |
 
-## Slide 12 - Takeaways
+Cluster replication keeps the same ranking but is lower: 11.40, 14.00, and 12.70.
+
+## Slide 12 - Course connections
+
+- Chapters 21-25: CNN image encoder.
+- Chapter 26: cross-entropy in the contrastive loss.
+- Chapter 27: AdamW and weight decay.
+- Chapter 30: PyTorch training and evaluation loops.
+- Chapters 37-40: attention and Transformer text encoder.
+- Chapter 42: tokenization.
+
+## Slide 13 - Takeaways
 
 - The CLIP training loop is simple and reproducible.
 - Mini-CLIP learns measurable image-text alignment.
-- Zero-shot transfer is weak at this scale.
+- Retrieval is stable across the original run and the cluster replication.
+- Zero-shot transfer is weaker and more sensitive.
 - Prompt engineering helps only slightly here.
-- The project highlights CLIP's dependence on data scale, model capacity and broad pre-training.
+- The project highlights CLIP's dependence on data scale, model capacity, and broad pre-training.
 
-## Slide 13 - Reproduction command
+## Slide 14 - Reproduction command
 
 ```bash
 python -m miniclip_repro.reproduce \
@@ -113,7 +126,7 @@ python -m miniclip_repro.reproduce \
 
 Outputs include checkpoints, metrics, retrieval tables and prompt-ablation artifacts.
 
-## Slide 14 - Q&A prompts
+## Slide 15 - Q&A prompts
 
 - What changes most if batch size is reduced?
 - Would pretrained ResNet weights close the gap?

@@ -1,0 +1,2 @@
+split,text_retrieval_r@1,text_retrieval_r@5,text_retrieval_r@10,image_retrieval_r@1,image_retrieval_r@5,image_retrieval_r@10,mean_r@1
+test,4.1000,13.0000,20.1000,4.0000,13.7000,21.6400,4.0500

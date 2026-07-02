@@ -1,0 +1,44 @@
+seed: 42
+output_dir: outputs
+data:
+  dataset_id: jxie/flickr8k
+  cache_dir: data/hf_cache
+  image_size: 160
+  num_workers: 0
+  train_augmentation: light
+model:
+  embed_dim: 256
+  text_width: 256
+  text_layers: 2
+  text_heads: 4
+  text_ff_dim: 512
+  text_dropout: 0.1
+  max_length: 32
+  min_token_freq: 1
+  max_vocab_size: 20000
+training:
+  epochs: 50
+  batch_size: 128
+  lr: 0.0004
+  weight_decay: 0.01
+  grad_clip_norm: 1.0
+  warmup_steps: 250
+  monitor_metric: mean_r@1
+  early_stopping_patience: 0
+  early_stopping_min_delta: 0.0
+  log_interval: 20
+eval:
+  batch_size: 128
+  retrieval_batch_size: 256
+  cifar10_limit: 1000
+  cifar10_root: data/cifar10
+  fast_dev:
+    train_examples: 64
+    validation_examples: 16
+    test_examples: 16
+    cifar10_limit: 64
+  prompt_templates:
+  - a photo of a {label}
+  - a blurry photo of a {label}
+  - a close-up photo of a {label}
+  - a small photo of a {label}

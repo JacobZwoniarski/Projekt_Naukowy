@@ -1,0 +1,9 @@
+{
+  "image_retrieval_r@1": 4.0,
+  "image_retrieval_r@10": 21.64,
+  "image_retrieval_r@5": 13.7,
+  "mean_r@1": 4.05,
+  "text_retrieval_r@1": 4.1,
+  "text_retrieval_r@10": 20.1,
+  "text_retrieval_r@5": 13.0
+}
